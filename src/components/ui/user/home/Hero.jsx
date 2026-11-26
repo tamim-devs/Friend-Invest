@@ -1,11 +1,30 @@
 'use client'
+import { useEffect, useState } from "react";
 import { useSession } from "@/lib/auth-client";
 import { CircleUserRound } from "lucide-react";
 import Image from "next/image";
+import { getMyProfile } from "@/lib/api/members";
 
 const Hero = () => {
-
   const { data: session } = useSession();
+  const [memberId, setMemberId] = useState("");
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    getMyProfile()
+      .then((result) => {
+        if (active) setMemberId(result.member?.memberId || "");
+      })
+      .catch((error) => {
+        if (active) setProfileError(error.message || "Member ID পাওয়া যায়নি।");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <section className="relative mb-10 h-[444px] w-full shrink-0 ">
 
@@ -33,13 +52,11 @@ const Hero = () => {
 
             <div className="min-w-0">
               <h3 className="truncate text-sm font-bold text-gray-900 sm:text-base">
-                {session?.user?.name || "User Name"}
+                {session?.user?.name || "—"}
               </h3>
 
               <p className="mt-0.5 text-[10px] font-medium text-gray-500 sm:text-xs">
-              {session?.user?.id
-  ? `Member ID: ${session.user.id}`
-  : "Member ID: Auto"}
+                {profileError || `Member ID: ${memberId || "—"}`}
               </p>
             </div>
           </div>

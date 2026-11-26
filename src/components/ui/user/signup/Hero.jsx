@@ -2,7 +2,7 @@ import Image from 'next/image'
 
 const Hero = () => {
   return (
-    <div className="relative h-[444px] w-full overflow-hidden">
+    <div className="relative h-[400px] w-full overflow-hidden">
 
       <Image
         src="/SignupBanner.png"

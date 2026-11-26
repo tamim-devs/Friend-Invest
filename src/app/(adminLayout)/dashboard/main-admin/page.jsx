@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -22,6 +23,7 @@ import {
   Crown,
   RefreshCw,
 } from "lucide-react";
+import { getAdminDashboard } from "@/lib/api/dashboard";
 
 ChartJS.register(
   ArcElement,
@@ -32,28 +34,52 @@ ChartJS.register(
   BarElement
 );
 
-// Dummy Data - Future Backend Integration
-const dashboardData = {
-  bankBalance: 480000,
-  targetAmount: 720000,
-  totalMembers: 20,
-  monthlyDeposit: 72000,
-  totalDeposits: 480000,
-
-  topContributors: [
-    { name: "Abrar Fahim", totalDeposit: 85000 },
-    { name: "Tamim Hasan", totalDeposit: 72000 },
-    { name: "Sakib Ahmed", totalDeposit: 65000 },
-    { name: "Rakib Hasan", totalDeposit: 58000 },
-    { name: "Naim Ahmed", totalDeposit: 45000 },
-  ],
-};
-
 const formatMoney = (amount) =>
   `৳${Number(amount || 0).toLocaleString("en-IN")}`;
 
 const Page = () => {
-  const data = dashboardData;
+  const [dashboard, setDashboard] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    getAdminDashboard()
+      .then((result) => {
+        if (!active) return;
+
+        setDashboard(result);
+      })
+      .catch((error) => {
+        if (active) {
+          setLoadError(error.message || "Admin dashboard তথ্য লোড করা যায়নি।");
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (isLoading || loadError || !dashboard) {
+    return (
+      <main className="flex h-dvh items-center justify-center bg-[#f5f7fc] p-5 text-center text-sm text-slate-600">
+        {isLoading ? "ড্যাশবোর্ড লোড হচ্ছে..." : loadError || "ড্যাশবোর্ডের তথ্য পাওয়া যায়নি।"}
+      </main>
+    );
+  }
+
+  const data = dashboard.statistics;
+  const topContributors = (dashboard.topContributors || [])
+    .map((member) => ({
+      name: member.name || member.memberName || member.memberId || "সদস্য",
+      total: Number(member.total ?? member.totalDeposit ?? 0),
+    }))
+    .filter((member) => Number.isFinite(member.total) && member.total > 0);
 
   const progress =
     data.targetAmount > 0
@@ -144,28 +170,24 @@ const Page = () => {
 
   // Contributors Bar Chart
   const contributorChart = {
-    labels: data.topContributors.map(
-      (member) => member.name
-    ),
+    labels: topContributors.map((member) => member.name),
 
     datasets: [
       {
         label: "মোট জমা",
 
-        data: data.topContributors.map(
-          (member) => member.totalDeposit
-        ),
+        data: topContributors.map((member) => member.total),
 
         backgroundColor: [
+          "#0f766e",
           "#2563eb",
-          "#22c55e",
-          "#f59e0b",
-          "#a855f7",
-          "#06b6d4",
+          "#d97706",
+          "#7c3aed",
+          "#0891b2",
         ],
 
-        borderRadius: 6,
-        barThickness: 12,
+        borderRadius: 8,
+        barThickness: 18,
       },
     ],
   };
@@ -183,17 +205,27 @@ const Page = () => {
       tooltip: {
         callbacks: {
           label: (context) =>
-            formatMoney(context.raw),
+            ` ${formatMoney(context.raw)}`,
         },
       },
     },
 
     scales: {
       x: {
-        display: false,
         beginAtZero: true,
         grid: {
+          color: "#e2e8f0",
+          drawTicks: false,
+        },
+        border: {
           display: false,
+        },
+        ticks: {
+          color: "#64748b",
+          font: {
+            size: 9,
+          },
+          callback: (value) => formatMoney(value),
         },
       },
 
@@ -209,7 +241,7 @@ const Page = () => {
         ticks: {
           color: "#475569",
           font: {
-            size: 10,
+            size: 9,
             weight: "600",
           },
         },
@@ -218,9 +250,9 @@ const Page = () => {
   };
 
   return (
-    <main className="h-dvh w-full overflow-hidden bg-[#f5f7fc] p-3 text-slate-800 sm:p-5">
+    <main className="min-h-full w-full bg-[#f5f7fc] p-3 text-slate-800 sm:p-5">
 
-      <div className="mx-auto flex h-full max-w-7xl flex-col gap-3 sm:gap-4">
+      <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-3 sm:gap-4">
 
         {/* Header */}
         <header className="flex shrink-0 items-center justify-between rounded-2xl bg-gradient-to-r from-[#073e6c] to-[#1264a3] px-4 py-3 text-white shadow-md">
@@ -395,7 +427,7 @@ const Page = () => {
         </section>
 
         {/* Contributors */}
-        <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5">
+        <section className="flex min-h-[230px] flex-1 flex-col rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:min-h-[280px] sm:p-5">
 
           <div className="mb-2 flex shrink-0 items-center justify-between">
 
@@ -413,12 +445,15 @@ const Page = () => {
 
           </div>
 
-          <div className="min-h-0 flex-1">
-            <Bar
-              data={contributorChart}
-              options={contributorOptions}
-            />
-          </div>
+          {topContributors.length ? (
+            <div className="min-h-[170px] flex-1">
+              <Bar data={contributorChart} options={contributorOptions} />
+            </div>
+          ) : (
+            <div className="flex min-h-[170px] flex-1 items-center justify-center rounded-xl bg-slate-50 px-4 text-center text-xs text-slate-500">
+              এখনো কোনো অনুমোদিত জমার তথ্য নেই।
+            </div>
+          )}
 
         </section>
 

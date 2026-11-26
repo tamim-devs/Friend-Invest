@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Users,
   UserPlus,
@@ -18,85 +18,9 @@ import {
   ShieldCheck,
   Power,
   UserRound,
+  RefreshCw,
 } from "lucide-react";
-
-// Dummy Data
-// Future Backend: GET /api/admin/members
-
-const initialMembers = [
-  {
-    _id: "member_001",
-    memberId: "FB-001",
-    name: "Abrar Fahim",
-    phone: "017XXXXXXXX",
-    email: "abrar@example.com",
-    address: "Dhaka, Bangladesh",
-    totalDeposit: 72000,
-    monthlyDeposit: 1000,
-    joinDate: "2025-01-15",
-    status: "active",
-  },
-  {
-    _id: "member_002",
-    memberId: "FB-002",
-    name: "Mehedi Hasan",
-    phone: "018XXXXXXXX",
-    email: "mehedi@example.com",
-    address: "Mirpur, Dhaka",
-    totalDeposit: 54000,
-    monthlyDeposit: 1000,
-    joinDate: "2025-02-10",
-    status: "active",
-  },
-  {
-    _id: "member_003",
-    memberId: "FB-003",
-    name: "Rafi Ahmed",
-    phone: "019XXXXXXXX",
-    email: "rafi@example.com",
-    address: "Uttara, Dhaka",
-    totalDeposit: 36000,
-    monthlyDeposit: 1000,
-    joinDate: "2025-03-20",
-    status: "active",
-  },
-  {
-    _id: "member_004",
-    memberId: "FB-004",
-    name: "Sakib Rahman",
-    phone: "016XXXXXXXX",
-    email: "sakib@example.com",
-    address: "Gazipur, Bangladesh",
-    totalDeposit: 33000,
-    monthlyDeposit: 1000,
-    joinDate: "2025-04-12",
-    status: "active",
-  },
-  {
-    _id: "member_005",
-    memberId: "FB-005",
-    name: "Naim Ahmed",
-    phone: "015XXXXXXXX",
-    email: "naim@example.com",
-    address: "Narayanganj, Bangladesh",
-    totalDeposit: 12000,
-    monthlyDeposit: 1000,
-    joinDate: "2025-08-05",
-    status: "inactive",
-  },
-  {
-    _id: "member_006",
-    memberId: "FB-006",
-    name: "Tamim Hasan",
-    phone: "017XXXXXXXX",
-    email: "tamim@example.com",
-    address: "Dhaka, Bangladesh",
-    totalDeposit: 85000,
-    monthlyDeposit: 1000,
-    joinDate: "2024-12-10",
-    status: "active",
-  },
-];
+import { createMember, getAllMembers, updateMemberStatus } from "@/lib/api/members";
 
 // Helpers
 const formatMoney = (amount) =>
@@ -107,10 +31,12 @@ const formatDate = (date) =>
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(`${date}T12:00:00`));
+  }).format(new Date(date));
 
 const Page = () => {
-  const [members, setMembers] = useState(initialMembers);
+  const [members, setMembers] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const [savingMember, setSavingMember] = useState(false);
 
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -123,8 +49,23 @@ const Page = () => {
     phone: "",
     email: "",
     address: "",
-    monthlyDeposit: "1000",
   });
+
+  useEffect(() => {
+    let active = true;
+
+    getAllMembers("", 100)
+      .then((result) => {
+        if (active) setMembers(result.members || []);
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message || "সদস্যদের তথ্য লোড করা যায়নি।");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Statistics
   const activeMembers = members.filter(
@@ -136,7 +77,7 @@ const Page = () => {
   );
 
   const totalDeposit = members.reduce(
-    (total, member) => total + member.totalDeposit,
+    (total, member) => total + Number(member.totalDeposit || 0),
     0
   );
 
@@ -144,9 +85,9 @@ const Page = () => {
   const filteredMembers = useMemo(() => {
     return members.filter((member) => {
       const matchesSearch =
-        member.name.toLowerCase().includes(search.toLowerCase()) ||
-        member.memberId.toLowerCase().includes(search.toLowerCase()) ||
-        member.phone.includes(search);
+      member.name?.toLowerCase().includes(search.toLowerCase()) ||
+      member.memberId?.toLowerCase().includes(search.toLowerCase()) ||
+      member.phone?.includes(search);
 
       const matchesTab =
         activeTab === "all" ||
@@ -156,42 +97,27 @@ const Page = () => {
     });
   }, [members, search, activeTab]);
 
-  // Future Backend:
-  // POST /api/admin/members
-  const handleAddMember = (e) => {
+  const handleAddMember = async (e) => {
     e.preventDefault();
 
-    const newMember = {
-      _id: `member_${Date.now()}`,
-      memberId: `FB-${String(members.length + 1).padStart(3, "0")}`,
-      name: formData.name.trim(),
-      phone: formData.phone.trim(),
-      email: formData.email.trim(),
-      address: formData.address.trim(),
-      totalDeposit: 0,
-      monthlyDeposit: Number(formData.monthlyDeposit),
-      joinDate: new Date().toISOString().slice(0, 10),
-      status: "active",
-    };
-
-    setMembers((prev) => [newMember, ...prev]);
-
-    setActiveTab("all");
-    setSearch("");
-    setFormData({
-      name: "",
-      phone: "",
-      email: "",
-      address: "",
-      monthlyDeposit: "1000",
-    });
-
-    setShowAddModal(false);
+    try {
+      setSavingMember(true);
+      setLoadError("");
+      const result = await createMember(formData);
+      if (!result.member) throw new Error("সদস্য তৈরি হয়েছে, কিন্তু response-এ তথ্য নেই।");
+      setMembers((prev) => [result.member, ...prev]);
+      setActiveTab("all");
+      setSearch("");
+      setFormData({ name: "", phone: "", email: "", address: "" });
+      setShowAddModal(false);
+    } catch (error) {
+      setLoadError(error.message || "সদস্য যুক্ত করা যায়নি।");
+    } finally {
+      setSavingMember(false);
+    }
   };
 
-  // Future Backend:
-  // PATCH /api/admin/members/:id/status
-  const handleToggleStatus = (memberId) => {
+  const handleToggleStatus = async (memberId) => {
     const updatedMember = members.find(
       (member) => member._id === memberId
     );
@@ -203,19 +129,20 @@ const Page = () => {
         ? "inactive"
         : "active";
 
-    setMembers((prev) =>
-      prev.map((member) =>
-        member._id === memberId
-          ? { ...member, status: nextStatus }
-          : member
-      )
-    );
-
-    setSelectedMember((prev) =>
-      prev?._id === memberId
-        ? { ...prev, status: nextStatus }
-        : prev
-    );
+    try {
+      setLoadError("");
+      await updateMemberStatus(memberId, nextStatus);
+      setMembers((prev) =>
+        prev.map((member) =>
+          member._id === memberId ? { ...member, status: nextStatus } : member
+        )
+      );
+      setSelectedMember((prev) =>
+        prev?._id === memberId ? { ...prev, status: nextStatus } : prev
+      );
+    } catch (error) {
+      setLoadError(error.message || "সদস্যের status পরিবর্তন করা যায়নি।");
+    }
   };
 
   return (
@@ -240,15 +167,31 @@ const Page = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-[#073e6c] px-3 py-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-blue-800 sm:px-4 sm:py-3 sm:text-xs"
-          >
-            <UserPlus size={16} />
-            নতুন সদস্য
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              aria-label="সদস্য তালিকা রিফ্রেশ করুন"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
+            >
+              <RefreshCw size={15} />
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-[#073e6c] px-3 py-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-blue-800 sm:px-4 sm:py-3 sm:text-xs"
+            >
+              <UserPlus size={16} />
+              নতুন সদস্য
+            </button>
+          </div>
 
         </header>
+
+        {loadError && (
+          <p role="alert" className="shrink-0 rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+            {loadError}
+          </p>
+        )}
 
         {/* Statistics */}
         <section className="grid shrink-0 grid-cols-3 gap-2 sm:gap-3">
@@ -400,7 +343,7 @@ const Page = () => {
                     <div className="flex min-w-0 items-center gap-2.5">
 
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-extrabold text-blue-700">
-                        {member.name.charAt(0)}
+                        {member.name?.charAt(0) || "?"}
                       </div>
 
                       <div className="min-w-0">
@@ -435,13 +378,24 @@ const Page = () => {
 
                     </div>
 
-                    <button
-                      onClick={() => setSelectedMember(member)}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-700 transition hover:bg-blue-100 sm:px-3"
-                    >
-                      <Eye size={14} />
-                      বিস্তারিত
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {member.status !== "active" && (
+                        <button
+                          onClick={() => handleToggleStatus(member._id)}
+                          className="flex items-center gap-1 rounded-lg bg-green-600 px-2 py-2 text-[9px] font-bold text-white transition hover:bg-green-700"
+                        >
+                          <ShieldCheck size={13} />
+                          সক্রিয় করুন
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedMember(member)}
+                        className="flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-700 transition hover:bg-blue-100 sm:px-3"
+                      >
+                        <Eye size={14} />
+                        বিস্তারিত
+                      </button>
+                    </div>
 
                   </div>
 
@@ -505,7 +459,7 @@ const Page = () => {
             <div className="mb-5 flex flex-col items-center rounded-xl bg-blue-50 p-4">
 
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-2xl font-extrabold text-blue-700">
-                {selectedMember.name.charAt(0)}
+                {selectedMember.name?.charAt(0) || "?"}
               </div>
 
               <h3 className="mt-2 text-base font-extrabold">
@@ -563,13 +517,10 @@ const Page = () => {
                   icon: MapPin,
                 },
                 {
-                  label: "মাসিক জমা",
-                  value: formatMoney(selectedMember.monthlyDeposit),
-                  icon: Wallet,
-                },
-                {
                   label: "যোগদানের তারিখ",
-                  value: formatDate(selectedMember.joinDate),
+                  value: selectedMember.createdAt
+                    ? formatDate(selectedMember.createdAt)
+                    : "—",
                   icon: CalendarDays,
                 },
               ].map(({ label, value, icon: Icon }) => (
@@ -687,12 +638,6 @@ const Page = () => {
                   placeholder: "বর্তমান ঠিকানা",
                   type: "text",
                 },
-                {
-                  label: "মাসিক জমার পরিমাণ",
-                  name: "monthlyDeposit",
-                  placeholder: "1000",
-                  type: "number",
-                },
               ].map((field) => (
 
                 <div key={field.name}>
@@ -724,10 +669,11 @@ const Page = () => {
 
             <button
               type="submit"
+              disabled={savingMember}
               className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#073e6c] py-3 text-xs font-bold text-white transition hover:bg-blue-800"
             >
               <UserPlus size={16} />
-              সদস্য যুক্ত করুন
+              {savingMember ? "যুক্ত করা হচ্ছে..." : "সদস্য যুক্ত করুন"}
             </button>
 
           </form>

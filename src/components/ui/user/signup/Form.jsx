@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { apiRequest } from "@/lib/api/api";
 import { useRouter } from "next/navigation";
 
 const Form = () => {
@@ -63,6 +64,15 @@ const Form = () => {
 
       if (error) {
         setError(error.message || "Registration ব্যর্থ হয়েছে।");
+        return;
+      }
+
+      try {
+        await apiRequest("/members/register", { method: "POST" });
+      } catch (registrationError) {
+        setError(
+          `অ্যাকাউন্ট তৈরি হয়েছে, কিন্তু সদস্য আবেদন জমা হয়নি। ${registrationError.message}`
+        );
         return;
       }
 

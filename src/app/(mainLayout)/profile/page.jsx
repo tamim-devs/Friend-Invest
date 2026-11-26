@@ -1,10 +1,10 @@
 
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { getMyProfile } from "@/lib/api/members";
 
 import {
   Phone,
@@ -12,29 +12,8 @@ import {
   MapPin,
   Wallet,
   CalendarDays,
-  BriefcaseBusiness,
-  Star,
   LogOut,
 } from "lucide-react";
-
-// Demo Profile Data
-const initialProfile = {
-  _id: "user_001",
-  fullName: "Abrar Fahim",
-  memberId: "FB-001",
-  phone: "01XXXXXXXXX",
-  email: "example@gmail.com",
-  address: "Dhaka, Bangladesh",
-  avatar: null,
-};
-
-// Demo Statistics
-const initialStats = {
-  totalDeposited: 45500,
-  totalMonths: 18,
-  totalInvestment: 45500,
-  successRate: 63,
-};
 
 const formatAmount = (amount) =>
   new Intl.NumberFormat("en-US").format(amount);
@@ -42,10 +21,33 @@ const formatAmount = (amount) =>
 const ProfilePage = () => {
   const router = useRouter();
 
-  const [profile] = useState(initialProfile);
-  const [stats] = useState(initialStats);
+  const [profile, setProfile] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    getMyProfile()
+      .then((result) => {
+        if (!active) return;
+        setProfile(result.member);
+        setStats(result.statistics);
+      })
+      .catch((error) => {
+        if (active) setProfileError(error.message || "প্রোফাইল লোড করা যায়নি।");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -70,47 +72,36 @@ const ProfilePage = () => {
     }
   };
 
-  const profileStats = [
-    {
-      id: "totalDeposited",
-      label: "মোট জমা",
-      value: `৳${formatAmount(stats.totalDeposited)}`,
-      icon: Wallet,
-      iconColor: "text-green-600",
-      bgColor: "bg-[#e0f8e9]",
-      valueColor: "text-green-700",
-    },
-    {
-      id: "totalMonths",
-      label: "মোট মাস",
-      value: stats.totalMonths,
-      icon: CalendarDays,
-      iconColor: "text-blue-600",
-      bgColor: "bg-[#e4edff]",
-      valueColor: "text-blue-700",
-    },
-    {
-      id: "totalInvestment",
-      label: "মোট বিনিয়োগ",
-      value: `৳${formatAmount(stats.totalInvestment)}`,
-      icon: BriefcaseBusiness,
-      iconColor: "text-purple-600",
-      bgColor: "bg-[#f0e4ff]",
-      valueColor: "text-purple-700",
-    },
-    {
-      id: "successRate",
-      label: "সফলতার হার",
-      value: `${stats.successRate}%`,
-      icon: Star,
-      iconColor: "text-orange-500",
-      bgColor: "bg-[#fff0df]",
-      valueColor: "text-orange-600",
-    },
-  ];
+  const profileStats = stats
+    ? [
+        {
+          id: "totalDeposited",
+          label: "অনুমোদিত মোট জমা",
+          value: `৳${formatAmount(stats.totalDeposit)}`,
+          icon: Wallet,
+          iconColor: "text-green-600",
+          bgColor: "bg-[#e0f8e9]",
+          valueColor: "text-green-700",
+        },
+        {
+          id: "verifiedDeposits",
+          label: "অনুমোদিত জমার সংখ্যা",
+          value: stats.verifiedDeposits,
+          icon: CalendarDays,
+          iconColor: "text-blue-600",
+          bgColor: "bg-[#e4edff]",
+          valueColor: "text-blue-700",
+        },
+      ]
+    : [];
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#f8f9ff] px-3 pt-2 pb-3 text-[#172b4d]">
+      {profileError && (
+        <p role="alert" className="shrink-0 rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+          {profileError}
+        </p>
+      )}
 
       {/* Profile Information */}
       <section className="flex shrink-0 flex-col items-center pt-2">
@@ -118,10 +109,12 @@ const ProfilePage = () => {
         {/* Profile Picture */}
         <div className="flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full border-[4px] border-white bg-gradient-to-br from-sky-200 to-blue-300 shadow-md">
 
-          {profile.avatar ? (
+          {profile?.image ? (
+            // Profile images are user-provided external URLs.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={profile.avatar}
-              alt={profile.fullName}
+              src={profile.image}
+              alt={profile.name || "সদস্য"}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -134,12 +127,12 @@ const ProfilePage = () => {
 
         {/* Name */}
         <h2 className="mt-1.5 text-[16px] font-extrabold text-slate-800">
-          {profile.fullName}
+          {profile?.name || (isLoading ? "লোড হচ্ছে..." : "—")}
         </h2>
 
         {/* Member ID */}
         <span className="mt-1 rounded-full bg-purple-600 px-3 py-0.5 text-[10px] font-bold text-white">
-          {profile.memberId}
+          {profile?.memberId || "—"}
         </span>
 
       </section>
@@ -151,7 +144,7 @@ const ProfilePage = () => {
         <div className="flex items-center gap-3">
           <Phone size={16} className="shrink-0 fill-blue-700 text-blue-700" />
           <p className="text-[11px] font-medium text-slate-700">
-            {profile.phone}
+            {profile?.phone || "—"}
           </p>
         </div>
 
@@ -159,7 +152,7 @@ const ProfilePage = () => {
         <div className="flex items-center gap-3">
           <Mail size={16} className="shrink-0 text-blue-700" />
           <p className="truncate text-[11px] font-medium text-slate-700">
-            {profile.email}
+            {profile?.email || "—"}
           </p>
         </div>
 
@@ -167,7 +160,7 @@ const ProfilePage = () => {
         <div className="flex items-center gap-3">
           <MapPin size={16} className="shrink-0 fill-blue-700 text-blue-700" />
           <p className="text-[11px] font-medium text-slate-700">
-            {profile.address}
+            {profile?.address || "—"}
           </p>
         </div>
 
@@ -195,11 +188,7 @@ const ProfilePage = () => {
                   <Icon
                     size={19}
                     className={item.iconColor}
-                    fill={
-                      item.id === "successRate"
-                        ? "currentColor"
-                        : "none"
-                    }
+                    fill="none"
                   />
                 </div>
 

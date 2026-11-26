@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Wallet,
@@ -15,71 +15,7 @@ import {
   ArrowDownLeft,
   Filter,
 } from "lucide-react";
-
-// Dummy Data
-// Future Backend: GET /api/admin/deposits
-const initialDeposits = [
-  {
-    _id: "deposit_001",
-    memberId: "FB-001",
-    memberName: "আবরার ফাহিম",
-    amount: 2000,
-    month: "নভেম্বর 2026",
-    paymentMethod: "bKash",
-    transactionId: "9F3A7B2C1D",
-    phone: "01XXXXXXXXX",
-    submittedAt: "2026-11-23",
-    status: "pending",
-  },
-  {
-    _id: "deposit_002",
-    memberId: "FB-002",
-    memberName: "মেহেদী হাসান",
-    amount: 1500,
-    month: "নভেম্বর 2026",
-    paymentMethod: "Nagad",
-    transactionId: "8G4B6C2D9A",
-    phone: "01XXXXXXXXX",
-    submittedAt: "2026-11-22",
-    status: "pending",
-  },
-  {
-    _id: "deposit_003",
-    memberId: "FB-003",
-    memberName: "রাফি আহমেদ",
-    amount: 1000,
-    month: "নভেম্বর 2026",
-    paymentMethod: "Rocket",
-    transactionId: "7H5C8D3E1B",
-    phone: "01XXXXXXXXX",
-    submittedAt: "2026-11-21",
-    status: "pending",
-  },
-  {
-    _id: "deposit_004",
-    memberId: "FB-004",
-    memberName: "সাকিব রহমান",
-    amount: 2000,
-    month: "নভেম্বর 2026",
-    paymentMethod: "bKash",
-    transactionId: "6J2D9E4F5C",
-    phone: "01XXXXXXXXX",
-    submittedAt: "2026-11-20",
-    status: "approved",
-  },
-  {
-    _id: "deposit_005",
-    memberId: "FB-005",
-    memberName: "নাঈম আহমেদ",
-    amount: 1500,
-    month: "অক্টোবর 2026",
-    paymentMethod: "Nagad",
-    transactionId: "5K3E7F8G2D",
-    phone: "01XXXXXXXXX",
-    submittedAt: "2026-10-25",
-    status: "approved",
-  },
-];
+import { getAllDeposits, reviewDeposit } from "@/lib/api/deposits";
 
 const formatMoney = (amount) =>
   `৳${Number(amount || 0).toLocaleString("en-IN")}`;
@@ -89,13 +25,44 @@ const formatDate = (date) =>
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(`${date}T12:00:00`));
+  }).format(new Date(date.length === 10 ? `${date}T12:00:00` : date));
 
 const Page = () => {
-  const [deposits, setDeposits] = useState(initialDeposits);
+  const [deposits, setDeposits] = useState([]);
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [selectedDeposit, setSelectedDeposit] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    getAllDeposits("", 100)
+      .then((result) => {
+        if (!active || !result?.deposits) return;
+
+        setDeposits(result.deposits.map((item) => ({
+          ...item,
+          memberName: item.memberName || "",
+          memberId: item.memberId || "",
+          transactionId: item.transactionId || "",
+          submittedAt: item.createdAt?.slice?.(0, 10) || item.depositDate || "",
+          status: item.status === "verified" ? "approved" : item.status,
+        })));
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message || "জমার তালিকা লোড করা যায়নি।");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Deposit Statistics
   const pendingDeposits = deposits.filter(
@@ -117,41 +84,51 @@ const Page = () => {
   );
 
   // Search and Filter
-  const filteredDeposits = useMemo(() => {
-    return deposits.filter((item) => {
-      const matchesTab = item.status === activeTab;
+  const normalizedSearch = search.toLowerCase();
+  const filteredDeposits = deposits.filter((item) => {
+    const matchesTab = item.status === activeTab;
+    const matchesSearch =
+      item.memberName?.toLowerCase().includes(normalizedSearch) ||
+      item.memberId?.toLowerCase().includes(normalizedSearch) ||
+      item.transactionId?.toLowerCase().includes(normalizedSearch);
 
-      const matchesSearch =
-        item.memberName.toLowerCase().includes(search.toLowerCase()) ||
-        item.memberId.toLowerCase().includes(search.toLowerCase()) ||
-        item.transactionId.toLowerCase().includes(search.toLowerCase());
+    return matchesTab && Boolean(matchesSearch);
+  });
 
-      return matchesTab && matchesSearch;
-    });
-  }, [deposits, activeTab, search]);
-
-  // Future Backend:
-  // PATCH /api/admin/deposits/:id/approve
-  const handleApprove = (depositId) => {
-    setDeposits((prev) =>
-      prev.map((item) =>
-        item._id === depositId
-          ? { ...item, status: "approved" }
-          : item
-      )
-    );
-
-    setSelectedDeposit(null);
+  const handleApprove = async (depositId) => {
+    try {
+      setLoadError("");
+      await reviewDeposit(depositId, "verified");
+      setDeposits((prev) =>
+        prev.map((item) =>
+          item._id === depositId
+            ? { ...item, status: "approved" }
+            : item
+        )
+      );
+      setSelectedDeposit(null);
+      setRejectionReason("");
+    } catch (error) {
+      setLoadError(error.message || "জমা অনুমোদন করা যায়নি।");
+    }
   };
 
-  // Future Backend:
-  // PATCH /api/admin/deposits/:id/reject
-  const handleReject = (depositId) => {
-    setDeposits((prev) =>
-      prev.filter((item) => item._id !== depositId)
-    );
+  const handleReject = async (depositId) => {
+    if (!rejectionReason.trim()) {
+      setLoadError("বাতিলের কারণ লিখুন।");
+      return;
+    }
 
-    setSelectedDeposit(null);
+    try {
+      setLoadError("");
+      await reviewDeposit(depositId, "rejected", rejectionReason.trim());
+      setDeposits((prev) =>
+        prev.filter((item) => item._id !== depositId)
+      );
+      setSelectedDeposit(null);
+    } catch (error) {
+      setLoadError(error.message || "জমা বাতিল করা যায়নি।");
+    }
   };
 
   return (
@@ -179,6 +156,12 @@ const Page = () => {
             <Wallet size={21} />
           </div>
         </header>
+
+        {loadError && (
+          <p role="alert" className="shrink-0 rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+            {loadError}
+          </p>
+        )}
 
         {/* Statistics */}
         <section className="grid shrink-0 grid-cols-3 gap-2 sm:gap-3">
@@ -299,7 +282,9 @@ const Page = () => {
 
           <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
-            {filteredDeposits.length > 0 ? (
+            {isLoading ? (
+              <p className="p-5 text-center text-xs text-slate-500">জমার তালিকা লোড হচ্ছে...</p>
+            ) : filteredDeposits.length > 0 ? (
               <div className="divide-y divide-slate-100">
 
                 {filteredDeposits.map((item) => (
@@ -311,7 +296,7 @@ const Page = () => {
                     <div className="flex min-w-0 items-center gap-3">
 
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-extrabold text-blue-700">
-                        {item.memberName.charAt(0)}
+                        {item.memberName?.charAt(0) || "?"}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -335,7 +320,9 @@ const Page = () => {
                         </div>
 
                         <p className="mt-1 text-[10px] text-slate-400">
-                          {item.memberId} · {item.month}
+                          {item.memberId} · {item.submittedAt
+                            ? new Intl.DateTimeFormat("bn-BD", { month: "long", year: "numeric" }).format(new Date(`${item.submittedAt}T12:00:00`))
+                            : "—"}
                         </p>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
@@ -419,6 +406,7 @@ const Page = () => {
               >
                 <X size={17} />
               </button>
+
             </div>
 
             <div className="mb-5 rounded-xl bg-blue-50 p-4 text-center">
@@ -438,7 +426,9 @@ const Page = () => {
               {[
                 ["সদস্যের নাম", selectedDeposit.memberName],
                 ["Member ID", selectedDeposit.memberId],
-                ["জমার মাস", selectedDeposit.month],
+                ["জমার মাস", selectedDeposit.submittedAt
+                  ? new Intl.DateTimeFormat("bn-BD", { month: "long", year: "numeric" }).format(new Date(`${selectedDeposit.submittedAt}T12:00:00`))
+                  : "—"],
                 ["Payment Method", selectedDeposit.paymentMethod],
                 ["Transaction ID", selectedDeposit.transactionId],
                 ["মোবাইল নম্বর", selectedDeposit.phone],
@@ -461,10 +451,21 @@ const Page = () => {
             </div>
 
             {selectedDeposit.status === "pending" && (
-              <div className="mt-5 grid grid-cols-2 gap-2">
+              <div className="mt-5">
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  বাতিলের কারণ
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(event) => setRejectionReason(event.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 p-2 text-xs"
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2">
 
                 <button
                   onClick={() => handleReject(selectedDeposit._id)}
+                  disabled={!rejectionReason.trim()}
                   className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 py-3 text-xs font-bold text-red-600"
                 >
                   <X size={15} />
@@ -479,6 +480,7 @@ const Page = () => {
                   অনুমোদন করুন
                 </button>
 
+                </div>
               </div>
             )}
 

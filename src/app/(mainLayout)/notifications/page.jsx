@@ -1,53 +1,15 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Info,
   Award,
   Bell,
   Megaphone,
-  Wallet,
-  ArrowRight,
 } from "lucide-react";
-
-// Demo Data
-const initialNotifications = [
-  {
-    _id: "1",
-    type: "success",
-    title: "আপনার জমা সফলভাবে রেকর্ড হয়েছে!",
-    message: "আপনার জমা সফলভাবে অনুমোদন করা হয়েছে।",
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    isRead: false,
-  },
-  {
-    _id: "2",
-    type: "info",
-    title: "নতুন তথ্য এসেছে",
-    message: "নতুন কিছু তথ্য জানতে আমাদের নোটিশ দেখুন।",
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    isRead: false,
-  },
-  {
-    _id: "3",
-    type: "reward",
-    title: "এই মাসের সেরা সদস্য নির্বাচিত!",
-    message: "আপনি আমাদের সেরা সদস্যদের একজন।",
-    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-    isRead: true,
-  },
-  {
-    _id: "4",
-    type: "deposit",
-    title: "আপনার মাসিক জমার পরিমাণ নির্ধারিত হয়েছে ৳1,000",
-    message: "নির্ধারিত সময়ের মধ্যে আপনার মাসিক জমা সম্পন্ন করুন।",
-    createdAt: new Date(Date.now() - 4 * 86400000).toISOString(),
-    isRead: true,
-  },
-];
+import { getNotifications, markNotificationAsRead } from "@/lib/api/notifications";
 
 const notificationConfig = {
   success: {
@@ -82,35 +44,49 @@ const formatDate = (date) =>
   }).format(new Date(date));
 
 const NotificationsPage = () => {
-  const [notifications, setNotifications] = useState(
-    initialNotifications
-  );
+  const [notifications, setNotifications] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Demo value:
-  // Backend থেকে জানতে হবে এই মাসে Verified Deposit হয়েছে কিনা।
-  const [hasDepositedThisMonth] = useState(false);
+  useEffect(() => {
+    let active = true;
 
-  // Only show notifications from the last 7 days
-  const activeNotifications = useMemo(() => {
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    getNotifications()
+      .then((result) => {
+        if (!active || !result?.notifications) return;
 
-    return notifications.filter((item) => {
-      const createdAt = new Date(item.createdAt).getTime();
+        setNotifications(result.notifications.map((item) => ({
+          ...item,
+          isRead: Boolean(item.read),
+          createdAt: item.createdAt,
+        })));
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message || "নোটিফিকেশন লোড করা যায়নি।");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
 
-      return (
-        !Number.isNaN(createdAt) &&
-        now - createdAt < sevenDays &&
-        createdAt <= now
-      );
-    });
-  }, [notifications]);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const activeNotifications = notifications;
 
   const unreadCount = activeNotifications.filter(
     (item) => !item.isRead
   ).length;
 
-  const handleNotificationClick = (id) => {
+  const handleNotificationClick = async (id) => {
+    try {
+      await markNotificationAsRead(id);
+    } catch (error) {
+      setLoadError(error.message || "নোটিফিকেশন পড়া হয়েছে হিসেবে চিহ্নিত করা যায়নি।");
+      return;
+    }
+
     setNotifications((prev) =>
       prev.map((item) =>
         item._id === id
@@ -119,8 +95,6 @@ const NotificationsPage = () => {
       )
     );
 
-    // Backend:
-    // PATCH /notifications/:id/read
   };
 
   return (
@@ -147,8 +121,15 @@ const NotificationsPage = () => {
 
       {/* Notification List */}
       <section className="min-h-0 flex-1 space-y-2 overflow-y-auto py-1">
+        {loadError && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+            {loadError}
+          </p>
+        )}
 
-        {activeNotifications.length > 0 ? (
+        {isLoading ? (
+          <p className="py-8 text-center text-xs text-slate-500">নোটিফিকেশন লোড হচ্ছে...</p>
+        ) : activeNotifications.length > 0 ? (
           activeNotifications.map((item) => {
             const config =
               notificationConfig[item.type] ||
@@ -213,55 +194,6 @@ const NotificationsPage = () => {
             </p>
           </div>
         )}
-
-        {/* Deposit Reminder */}
-        {!hasDepositedThisMonth && (
-          <div className="rounded-xl border border-green-100 bg-green-50 p-3">
-
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-100">
-                <Wallet size={20} className="text-green-600" />
-              </div>
-
-              <div className="flex-1">
-                <h2 className="text-[12px] font-bold text-green-800">
-                  আপনার মাসিক জমা সম্পন্ন করুন।
-                </h2>
-
-            
-              </div>
-            </div>
-
-            <Link
-              href="/deposit"
-              className="mt-3 flex h-9 items-center justify-center gap-2 rounded-lg bg-green-600 text-[11px] font-bold text-white"
-            >
-              এখনই জমা দিন
-              <ArrowRight size={15} />
-            </Link>
-
-          </div>
-        )}
-
-      </section>
-
-      {/* Promotional Banner */}
-      <section className="relative mt-2 flex h-[145px] shrink-0 flex-col items-center justify-end overflow-hidden rounded-2xl bg-gradient-to-b from-[#c7f3ff] via-[#a8e8b2] to-[#65ca63]">
-
-        <div className="absolute left-2 top-4 text-2xl">🌿</div>
-        <div className="absolute right-3 top-3 text-2xl">🌿</div>
-        <div className="absolute left-5 bottom-7 text-2xl">🌼</div>
-        <div className="absolute right-5 bottom-8 text-2xl">🌻</div>
-
-        <div className="relative z-10 mb-1 text-[76px] leading-[85px]">
-          📣
-        </div>
-
-        <div className="relative z-20 mb-3 -rotate-2 rounded-md bg-gradient-to-r from-yellow-300 to-yellow-400 px-5 py-2 shadow-md">
-          <h2 className="text-center text-[15px] font-extrabold text-green-900">
-            একসাথে এগিয়ে চলি!
-          </h2>
-        </div>
 
       </section>
 

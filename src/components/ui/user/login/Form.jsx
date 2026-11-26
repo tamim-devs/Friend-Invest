@@ -57,7 +57,7 @@ const Form = () => {
 
       const role = session.user.role;
 
-      if (role === "main_admin") {
+      if (role === "admin" || role === "main_admin") {
         router.replace("/dashboard/main-admin");
       } else if (role === "user") {
         router.replace("/");

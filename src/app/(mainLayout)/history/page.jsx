@@ -1,9 +1,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -20,6 +19,7 @@ import {
 } from "chart.js";
 
 import { Bar } from "react-chartjs-2";
+import { getMyDeposits } from "@/lib/api/deposits";
 
 ChartJS.register(
   CategoryScale,
@@ -28,69 +28,7 @@ ChartJS.register(
   Tooltip
 );
 
-// Sample History Data
-// Later replace with Backend API response
-const initialHistory = [
-  {
-    _id: "1",
-    month: "ডিসেম্বর",
-    year: 2025,
-    date: "2025-12-05",
-    amount: 1500,
-    status: "verified",
-    paymentMethod: "bkash",
-    transactionId: "TRX123456",
-  },
-  {
-    _id: "2",
-    month: "নভেম্বর",
-    year: 2025,
-    date: "2025-11-05",
-    amount: 1000,
-    status: "verified",
-    paymentMethod: "nagad",
-    transactionId: "TRX123457",
-  },
-  {
-    _id: "3",
-    month: "অক্টোবর",
-    year: 2025,
-    date: "2025-10-05",
-    amount: 1000,
-    status: "verified",
-    paymentMethod: "bkash",
-    transactionId: "TRX123458",
-  },
-  {
-    _id: "4",
-    month: "সেপ্টেম্বর",
-    year: 2025,
-    date: "2025-09-05",
-    amount: 1000,
-    status: "verified",
-    paymentMethod: "rocket",
-    transactionId: "TRX123459",
-  },
-  {
-    _id: "5",
-    month: "আগস্ট",
-    year: 2025,
-    date: "2025-08-05",
-    amount: 2000,
-    status: "verified",
-    paymentMethod: "bkash",
-    transactionId: "TRX123460",
-  },
-];
-
-// Sample Monthly Summary
-const monthlySummary = [
-  { month: "Aug", amount: 8000 },
-  { month: "Sep", amount: 10000 },
-  { month: "Oct", amount: 12000 },
-  { month: "Nov", amount: 7500 },
-  { month: "Dec", amount: 8000 },
-];
+const CURRENT_YEAR = new Date().getFullYear();
 
 const statusConfig = {
   verified: {
@@ -112,6 +50,13 @@ const statusConfig = {
 
 const formatAmount = (amount) =>
   new Intl.NumberFormat("en-US").format(amount);
+
+const getDepositDate = (item) => {
+  const value = item.depositDate || item.createdAt;
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`)
+    : new Date(value);
+};
 
 // Chart.js Configuration
 const chartOptions = {
@@ -172,10 +117,51 @@ const chartOptions = {
 };
 
 const HistoryPage = () => {
-  const [history] = useState(initialHistory);
+  const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  // Later get from Backend API
-  const totalDeposited = 45500;
+  useEffect(() => {
+    let active = true;
+
+    getMyDeposits(100)
+      .then((result) => {
+        if (active) setHistory(result.deposits || []);
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message || "জমার ইতিহাস লোড করা যায়নি।");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const totalDeposited = history
+    .filter((item) => item.status === "verified")
+    .reduce((total, item) => total + Number(item.amount || 0), 0);
+
+  const monthlySummary = useMemo(() => {
+    const totals = Array(12).fill(0);
+
+    history.forEach((item) => {
+      if (item.status !== "verified") return;
+      const date = getDepositDate(item);
+      if (!Number.isNaN(date.getTime()) && date.getFullYear() === CURRENT_YEAR) {
+        totals[date.getMonth()] += Number(item.amount || 0);
+      }
+    });
+
+    return totals.map((amount, index) => ({
+      month: new Intl.DateTimeFormat("bn-BD", { month: "short" }).format(
+        new Date(CURRENT_YEAR, index, 1)
+      ),
+      amount,
+    }));
+  }, [history]);
 
   const chartData = {
     labels: monthlySummary.map((item) => item.month),
@@ -212,15 +198,24 @@ const HistoryPage = () => {
       {/* Header */}
       <header className="flex h-10 shrink-0 items-center gap-3">
 
-        <button type="button" className="text-slate-700">
-          <ArrowLeft size={22} />
-        </button>
-
-
       </header>
 
       {/* History List */}
       <section className="shrink-0 space-y-2">
+
+        {loadError && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+            {loadError}
+          </p>
+        )}
+
+        {isLoading && (
+          <p className="py-4 text-center text-xs text-slate-500">ইতিহাস লোড হচ্ছে...</p>
+        )}
+
+        {!isLoading && !loadError && history.length === 0 && (
+          <p className="py-4 text-center text-xs text-slate-500">এখনও কোনো জমার তথ্য নেই।</p>
+        )}
 
         {history.map((item) => {
           const status =
@@ -242,11 +237,11 @@ const HistoryPage = () => {
               <div className="min-w-0 flex-1">
 
                 <p className="text-[11px] font-bold text-slate-800">
-                  {item.month}
+                  {getDepositDate(item).toLocaleDateString("bn-BD", { month: "long" })}
                 </p>
 
                 <p className="text-[15px] font-medium text-slate-500">
-                  {item.year}
+                  {getDepositDate(item).getFullYear()}
                 </p>
 
               </div>
@@ -302,7 +297,7 @@ const HistoryPage = () => {
           </h3>
 
           <span className="text-[10px] font-semibold text-slate-400">
-            ২০২৫
+            {CURRENT_YEAR}
           </span>
 
         </div>

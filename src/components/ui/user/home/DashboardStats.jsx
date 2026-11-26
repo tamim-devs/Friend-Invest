@@ -1,31 +1,56 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   ShieldCheck,
   Wallet,
   Users,
   ChartNoAxesColumnIncreasing,
-  Star,
 } from "lucide-react";
-
-// Demo Data
-// Future: Backend API থেকে এই Data আসবে।
-const dummyStats = {
-  _id: "dashboard-stats-001",
-  bankBalance: 40000,
-  targetAmount: 720000,
-  totalMembers: 20,
-  monthlyDeposit: 72000,
-  highestDeposit: 36000,
-};
+import { getDashboard } from "@/lib/api/dashboard";
 
 const formatMoney = (amount) =>
   `৳${Number(amount || 0).toLocaleString("en-IN")}`;
 
-const DashboardStats = ({ stats = dummyStats }) => {
-  const bankBalance = Number(stats.bankBalance || 0);
-  const targetAmount = Number(stats.targetAmount || 0);
+const DashboardStats = () => {
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    getDashboard()
+      .then((result) => {
+        if (active && result?.statistics) {
+          setDashboardStats(result.statistics);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setLoadError(error.message || "ড্যাশবোর্ডের তথ্য লোড করা যায়নি।");
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (isLoading || loadError || !dashboardStats) {
+    return (
+      <section className="flex h-full items-center justify-center text-center text-xs text-slate-500">
+        {isLoading ? "তথ্য লোড হচ্ছে..." : loadError || "কোনো তথ্য পাওয়া যায়নি।"}
+      </section>
+    );
+  }
+
+  const bankBalance = Number(dashboardStats.totalDeposit || 0);
+  const targetAmount = Number(dashboardStats.targetAmount || 0);
 
   // Bank Balance vs Target Progress
   const progress =
@@ -42,24 +67,24 @@ const DashboardStats = ({ stats = dummyStats }) => {
   const cards = [
     {
       title: "মোট সদস্য",
-      value: `${stats.totalMembers || 0} জন`,
+      value: `${dashboardStats.totalMembers || 0} জন`,
       icon: Users,
       bg: "bg-green-50",
       iconBg: "bg-green-100",
       text: "text-green-600",
     },
     {
-      title: "এই মাসের জমা",
-      value: formatMoney(stats.monthlyDeposit),
+      title: "আমার মোট জমা",
+      value: formatMoney(bankBalance),
       icon: Wallet,
       bg: "bg-purple-50",
       iconBg: "bg-purple-100",
       text: "text-purple-600",
     },
     {
-      title: "সর্বোচ্চ জমা",
-      value: formatMoney(stats.highestDeposit),
-      icon: Star,
+      title: "অনুমোদনের অপেক্ষায়",
+      value: `${dashboardStats.pendingDeposits || 0} টি`,
+      icon: Wallet,
       bg: "bg-amber-50",
       iconBg: "bg-amber-100",
       text: "text-amber-500",
@@ -76,6 +101,11 @@ const DashboardStats = ({ stats = dummyStats }) => {
 
   return (
     <section className="flex h-full min-h-0 w-full flex-col gap-2">
+      {loadError && (
+        <p className="shrink-0 rounded-lg bg-red-50 px-2 py-1 text-center text-[9px] text-red-600">
+          {loadError}
+        </p>
+      )}
 
       {/* Bank Balance & Progress */}
       <div className="shrink-0 rounded-xl border border-green-200 bg-gradient-to-br from-green-50 to-emerald-100 p-2.5">
@@ -84,7 +114,7 @@ const DashboardStats = ({ stats = dummyStats }) => {
 
           <div className="min-w-0">
             <p className="text-[10px] font-semibold text-gray-700">
-              ব্যাংকে বর্তমান জমা
+              আমার অনুমোদিত মোট জমা
             </p>
 
             <h2 className="mt-0.5 text-xl font-extrabold leading-tight text-gray-900">
@@ -92,7 +122,9 @@ const DashboardStats = ({ stats = dummyStats }) => {
             </h2>
 
             <p className="mt-1 text-[9px] font-medium text-gray-600">
-              লক্ষ্যমাত্রা: {formatMoney(targetAmount)}
+              {targetAmount > 0
+                ? `লক্ষ্যমাত্রা: ${formatMoney(targetAmount)}`
+                : "লক্ষ্যমাত্রা নির্ধারণ করা হয়নি"}
             </p>
           </div>
 
@@ -123,13 +155,19 @@ const DashboardStats = ({ stats = dummyStats }) => {
         {/* Remaining Amount */}
         <div className="mt-1.5 flex items-center justify-between">
           <p className="text-[9px] font-medium text-gray-600">
-            {progress >= 100
-              ? "অভিনন্দন! লক্ষ্যমাত্রা পূরণ হয়েছে।"
-              : `আরও ${formatMoney(remainingAmount)} জমা প্রয়োজন`}
+            {targetAmount <= 0
+              ? "অগ্রগতি দেখাতে আগে লক্ষ্যমাত্রা সেট করুন।"
+              : progress >= 100
+                ? "অভিনন্দন! লক্ষ্যমাত্রা পূরণ হয়েছে।"
+                : `আরও ${formatMoney(remainingAmount)} জমা প্রয়োজন`}
           </p>
 
           <p className="text-[9px] font-bold text-green-700">
-            {progress >= 100 ? "লক্ষ্য পূর্ণ" : "লক্ষ্যের অগ্রগতি"}
+            {targetAmount <= 0
+              ? "লক্ষ্যমাত্রা নেই"
+              : progress >= 100
+                ? "লক্ষ্য পূর্ণ"
+                : "লক্ষ্যের অগ্রগতি"}
           </p>
         </div>
 

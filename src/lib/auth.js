@@ -7,7 +7,7 @@ import { jwt } from "better-auth/plugins";
 const client = new MongoClient(process.env.MONGODB_URI);
 
 const db = client.db(
-  process.env.AUTH_DB_NAME || "arambagh-super-shop"
+  process.env.AUTH_DB_NAME || "Friend invest"
 );
 
 export const auth = betterAuth({
@@ -44,6 +44,11 @@ export const auth = betterAuth({
       role: {
         type: "string",
         defaultValue: "user",
+        input: false,
+      },
+      membershipStatus: {
+        type: "string",
+        defaultValue: "inactive",
         input: false,
       },
     },

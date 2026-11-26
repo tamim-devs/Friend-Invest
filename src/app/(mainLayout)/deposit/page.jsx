@@ -13,16 +13,17 @@ import {
   Smartphone,
   Hash,
 } from "lucide-react";
+import { createDeposit } from "@/lib/api/deposits";
 
 const paymentMethods = [
-  { id: "bkash", name: "bKash", color: "#e2136e", bg: "#fff0f6" },
+  { id: "bKash", name: "bKash", color: "#e2136e", bg: "#fff0f6" },
   { id: "nagad", name: "Nagad", color: "#f28c00", bg: "#fff6e8" },
   { id: "rocket", name: "Rocket", color: "#8b2bbd", bg: "#f7efff" },
 ];
 
 const Page = () => {
   const [formData, setFormData] = useState({
-    paymentMethod: "bkash",
+    paymentMethod: "bKash",
     depositDate: new Date().toLocaleDateString("en-CA"),
     amount: "1000",
     phone: "",
@@ -60,21 +61,9 @@ const Page = () => {
 
       data.append("screenshot", screenshot);
 
-      // Future Backend Integration:
-      // const response = await fetch(
-      //   `${process.env.NEXT_PUBLIC_API_URL}/deposits`,
-      //   {
-      //     method: "POST",
-      //     body: data,
-      //   }
-      // );
-
-      console.log("Deposit Data:", Object.fromEntries(
-        Object.entries(formData)
-      ));
-      console.log("Screenshot:", screenshot);
-
-      alert("আপনার জমার তথ্য প্রস্তুত হয়েছে।");
+      await createDeposit(data);
+      alert("আপনার জমার আবেদন সফলভাবে পাঠানো হয়েছে।");
+      setScreenshot(null);
 
     } catch (error) {
       console.error("Deposit Error:", error);

@@ -63,7 +63,7 @@ const FooterBar = ({ role: propRole }) => {
   if (isPending && !propRole) return null;
 
   const navItems =
-    role === "main_admin" ? mainAdminMenu : userMenu;
+    role === "admin" || role === "main_admin" ? mainAdminMenu : userMenu;
 
   return (
     <footer className="w-full shrink-0 border-t border-gray-100 bg-white">
@@ -77,7 +77,7 @@ const FooterBar = ({ role: propRole }) => {
               : pathname === item.href ||
                 pathname.startsWith(`${item.href}/`);
 
-          return (
+          return ( 
             <Link
               key={item.href}
               href={item.href}
